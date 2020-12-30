@@ -2434,7 +2434,7 @@ static int parsePSM(switch_codec_t *codec, unsigned char* data, int size)
 			h264_codec_context_t *context = NULL;
 			m_videoType = VIDEO_PS_H265;
 			// TRACE("parsePSM: video type h265\n");
-			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: video type h265\n");
+			// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: video type h265\n");
 			context = (h264_codec_context_t *)codec->private_info;
 			if (0 == context->m_reinit) {
 				switch_ps_reinit(codec); //pengliang: reinit for h264
@@ -2444,10 +2444,10 @@ static int parsePSM(switch_codec_t *codec, unsigned char* data, int size)
 
 		if (0x90 == type) {
 			m_audioType = AUDIO_PS_G711A;
-			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: audio type G711A\n");
+			// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: audio type G711A\n");
 		} else if (0x91 == type) {
 			m_audioType = AUDIO_PS_G711U;
-			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: audio type G711U\n");
+			// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: audio type G711U\n");
 		}
 
 		data += 4 + es_info_length;

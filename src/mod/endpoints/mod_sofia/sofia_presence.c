@@ -4855,7 +4855,7 @@ void sofia_presence_handle_sip_i_message(int status,
 			char *from_addr;
 			char *p;
 			char *full_from;
-			char proto[512] = SOFIA_CHAT_PROTO;
+			char proto[512] = "GLOBAL_SMS"; // modify by houlin 2020-12-19
 			sip_unknown_t *un;
 			int first_history_info = 1;
 
