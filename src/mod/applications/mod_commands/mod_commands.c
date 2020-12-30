@@ -658,6 +658,14 @@ SWITCH_STANDARD_API(shutdown_function)
 	return SWITCH_STATUS_SUCCESS;
 }
 
+// add by zz
+SWITCH_STANDARD_API(license_function)
+{
+	switch_print_license(stream);
+	return SWITCH_STATUS_SUCCESS;
+}
+// add end
+
 SWITCH_STANDARD_API(version_function)
 {
 	int argc;
@@ -2825,6 +2833,17 @@ SWITCH_STANDARD_API(reload_xml_function)
 	const char *err = "";
 
 	switch_xml_reload(&err);
+
+	// add by zz
+	switch_get_user_count();
+	if (switch_check_license()) {
+		switch_stream_handle_t stream = { 0 };
+		SWITCH_STANDARD_STREAM(stream);
+		switch_console_execute("sofia start", 0, &stream);
+		free(stream.data);
+	}
+	// add end
+
 	stream->write_function(stream, "+OK [%s]\n", err);
 
 	return SWITCH_STATUS_SUCCESS;
@@ -7602,6 +7621,7 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_commands_load)
 	SWITCH_ADD_API(commands_api_interface, "file_exists", "Check if a file exists on server", file_exists_function, "<file>");
 	SWITCH_ADD_API(commands_api_interface, "getcputime", "Gets CPU time in milliseconds (user,kernel)", getcputime_function, GETCPUTIME_SYNTAX);
 	SWITCH_ADD_API(commands_api_interface, "json", "JSON API", json_function, "JSON");
+	SWITCH_ADD_API(commands_api_interface, "license", "License", license_function, ""); // add by zz
 
 	SWITCH_ADD_JSON_API(json_api_interface, "mediaStats", "JSON Media Stats", json_stats_function, "");
 

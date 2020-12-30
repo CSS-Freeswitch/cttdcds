@@ -2873,6 +2873,53 @@ uint32_t sofia_profile_reg_count(sofia_profile_t *profile)
 
 static const char *status_names[] = { "DOWN", "UP", NULL };
 
+// add by zz
+static switch_status_t cmd_start(char **argv, int argc, switch_stream_handle_t *stream)
+{
+	char *cf = "sofia.conf";
+	switch_xml_t cfg, xml = NULL, xprofile, xprofiles;
+	if (!(xml = switch_xml_open_cfg(cf, &cfg, NULL))) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Open of %s failed\n", cf);
+		return SWITCH_STATUS_FALSE;
+	}
+	if ((xprofiles = switch_xml_child(cfg, "profiles"))) {
+		for (xprofile = switch_xml_child(xprofiles, "profile"); xprofile; xprofile = xprofile->next) {
+			char *xprofilename = (char *)switch_xml_attr_soft(xprofile, "name");
+			if (config_sofia(SOFIA_CONFIG_RESCAN, xprofilename) == SWITCH_STATUS_SUCCESS) {
+				stream->write_function(stream, "%s started successfully\n", xprofilename);
+			} else {
+				stream->write_function(stream, "Failure starting %s\n", xprofilename);
+			}
+		}
+	}
+	if (xml) switch_xml_free(xml);
+
+	return SWITCH_STATUS_SUCCESS;
+}
+
+static switch_status_t cmd_stop(char **argv, int argc, switch_stream_handle_t *stream)
+{
+	sofia_profile_t *profile = NULL;
+	switch_hash_index_t *hi;
+	void *val;
+	const void *vvar;
+	switch_mutex_lock(mod_sofia_globals.hash_mutex);
+	for (hi = switch_core_hash_first(mod_sofia_globals.profile_hash); hi; hi = switch_core_hash_next(&hi)) {
+		switch_core_hash_this(hi, &vvar, NULL, &val);
+		profile = (sofia_profile_t *) val;
+		if (sofia_test_pflag(profile, PFLAG_RUNNING)) {
+			if (!strcmp(vvar, profile->name)) { /* not an alias */
+				stream->write_function(stream, profile->name);
+				stream->write_function(stream, "\n");
+				sofia_clear_pflag_locked(profile, PFLAG_RUNNING);
+			}
+		}
+	}
+	switch_mutex_unlock(mod_sofia_globals.hash_mutex);
+	return SWITCH_STATUS_SUCCESS;
+}
+// add end
+
 static switch_status_t cmd_status(char **argv, int argc, switch_stream_handle_t *stream)
 {
 	sofia_profile_t *profile = NULL;
@@ -3506,6 +3553,8 @@ static switch_status_t cmd_profile(char **argv, int argc, switch_stream_handle_t
 	sofia_profile_t *profile = NULL;
 	char *profile_name = argv[0];
 	const char *err;
+
+	if (!switch_check_license()) return SWITCH_STATUS_SUCCESS; // add by zz
 
 	if (argc < 2) {
 		stream->write_function(stream, "Invalid Args!\n");
@@ -4447,6 +4496,14 @@ SWITCH_STANDARD_API(sofia_function)
 		stream->write_function(stream, "%s", usage_string);
 		goto done;
 	}
+
+	//add by zz
+	if (!strcasecmp(argv[0], "start")) {
+		func = cmd_start;
+	} else if (!strcasecmp(argv[0], "stop")) {
+		func = cmd_stop;
+	} else
+	//add end
 
 	if (!strcasecmp(argv[0], "profile")) {
 		func = cmd_profile;

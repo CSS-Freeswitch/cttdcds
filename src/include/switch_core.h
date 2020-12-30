@@ -2844,6 +2844,17 @@ SWITCH_DECLARE(switch_status_t) switch_core_session_start_text_thread(switch_cor
 
 SWITCH_DECLARE(const char *) switch_core_get_event_channel_key_separator(void);
 
+// add by zz
+SWITCH_DECLARE(void) switch_print_license(switch_stream_handle_t *stream);
+SWITCH_DECLARE(int) switch_get_user_count(void);
+SWITCH_DECLARE(int) switch_check_license(void); // return: 0-bad license
+// plain size should >= 64
+SWITCH_DECLARE(void) switch_decode_license(const char *encTxt, char *plain);
+// info size >=32
+SWITCH_DECLARE(void) switch_get_machine_info(char *info);
+SWITCH_DECLARE(void) switch_get_machine_info2(char *info);
+// add end
+
 SWITCH_END_EXTERN_C
 #endif
 /* For Emacs:
