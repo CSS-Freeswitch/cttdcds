@@ -405,7 +405,7 @@ void *SWITCH_THREAD_FUNC conference_thread_run(switch_thread_t *thread, void *ob
 		}
 
 		/* Find if no one talked for more than x number of second */
-		if (conference->terminate_on_silence && conference->count > 1) {
+		if (conference->terminate_on_silence && conference->count >= 1) { // modify by houlin 2019-7-29
 			int is_talking = 0;
 
 			for (imember = conference->members; imember; imember = imember->next) {
@@ -2438,6 +2438,11 @@ SWITCH_STANDARD_APP(conference_function)
 
 	if (mflags[MFLAG_MINTWO]) {
 		conference->min = 2;
+	}
+
+	if (switch_channel_get_variable(channel, "conference_min_three")) { // add by houlin 2020-12-17: 大华摄像头
+		switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_INFO, "SET conference min_three!\n");
+		conference->min = 3;
 	}
 
 

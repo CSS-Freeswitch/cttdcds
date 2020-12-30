@@ -927,6 +927,12 @@ switch_status_t conference_member_add(conference_obj_t *conference, conference_m
 			conference_utils_set_flag(conference, CFLAG_ENFORCE_MIN);
 		}
 
+		// add by houlin: 大华摄像头，若minithree则立即生效
+		if (conference->min && conference->min == 3) {
+			conference_utils_set_flag(conference, CFLAG_ENFORCE_MIN);
+		}
+		// add end
+
 		if (!switch_channel_test_app_flag_key("conference_silent", channel, CONF_SILENT_REQ) &&
 			switch_event_create_subclass(&event, SWITCH_EVENT_CUSTOM, CONF_EVENT_MAINT) == SWITCH_STATUS_SUCCESS) {
 			conference_member_add_event_data(member, event);

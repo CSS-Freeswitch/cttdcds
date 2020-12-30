@@ -10204,6 +10204,7 @@ SWITCH_DECLARE(void) switch_core_media_gen_local_sdp(switch_core_session_t *sess
 	const char *local_sdp_audio_zrtp_hash = switch_core_media_get_zrtp_hash(session, SWITCH_MEDIA_TYPE_AUDIO, SWITCH_TRUE);
 	const char *local_sdp_video_zrtp_hash = switch_core_media_get_zrtp_hash(session, SWITCH_MEDIA_TYPE_VIDEO, SWITCH_TRUE);
 	const char *local_sdp_text_zrtp_hash = switch_core_media_get_zrtp_hash(session, SWITCH_MEDIA_TYPE_TEXT, SWITCH_TRUE);
+	const char *sdp_user_name = switch_channel_get_variable(session->channel, "sdp_user_name"); // add by houlin 2020-12-15
 	const char *tmp;
 	switch_rtp_engine_t *a_engine, *v_engine, *t_engine;
 	switch_media_handle_t *smh;
@@ -10519,6 +10520,8 @@ SWITCH_DECLARE(void) switch_core_media_gen_local_sdp(switch_core_session_t *sess
 		}
 		sr = NULL;
 	}
+
+	if (sdp_user_name) username = sdp_user_name; // add by houlin 2020-12-15
 
 	family = strchr(ip, ':') ? "IP6" : "IP4";
 	switch_snprintf(buf, SDPBUFLEN,

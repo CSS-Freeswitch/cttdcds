@@ -36,6 +36,18 @@
  */
 
 
+// add by zz
+#ifndef _WINDOWS
+#include <sys/ioctl.h>
+#include <linux/hdreg.h>
+#include <sys/fcntl.h>
+// for license V2
+#include <net/if.h>
+#include <netinet/in.h>
+#endif
+#define BUF_LEN 16
+// add by zz
+
 
 #include <switch.h>
 #include <switch_ssl.h>
@@ -2117,11 +2129,41 @@ static void switch_load_core_config(const char *file)
 		}
 
 		if ((settings = switch_xml_child(cfg, "settings"))) {
+			// add by zz
+			runtime.max_reg_count = 15;
+			runtime.reg_count = 0;
+			// add end
 			for (param = switch_xml_child(settings, "param"); param; param = param->next) {
 				const char *var = switch_xml_attr_soft(param, "name");
 				const char *val = switch_xml_attr_soft(param, "value");
 
-				if (!strcasecmp(var, "loglevel")) {
+				// add by zz
+				if (!strcasecmp(var, "license")) {
+					char plain[64], info[32], info2[32],*ptr;
+					switch_decode_license(val, plain);
+
+					ptr = strchr(plain, ';');
+					if (ptr) {
+						*ptr = 0; // change ; to \0
+#ifdef _WINDOWS
+						runtime.max_reg_count = atoi(plain);
+#endif
+						ptr++; // ptr point to machine info
+						switch_get_machine_info(info);
+						switch_get_machine_info2(info2);
+
+						if (info[0] != 0) {
+							// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Info=%s.\n",info);
+							if (memcmp(ptr, info, BUF_LEN) == 0) runtime.max_reg_count = atoi(plain);
+						}
+
+						if(runtime.max_reg_count == 15) { // value not change, check info2
+							if (info2[0] != 0) {
+								if (memcmp(ptr, info2, BUF_LEN) == 0) runtime.max_reg_count = atoi(plain);
+							}
+						}
+					} // add end
+				} else if (!strcasecmp(var, "loglevel")) {
 					int level;
 					if (*val > 47 && *val < 58) {
 						level = atoi(val);
@@ -2417,22 +2459,17 @@ static void switch_load_core_config(const char *file)
 SWITCH_DECLARE(const char *) switch_core_banner(void)
 {
 
-	return ("\n"
-			".=============================================================.\n"
-			"|   _____              ______        _____ _____ ____ _   _   |\n"
-			"|  |  ___| __ ___  ___/ ___\\ \\      / /_ _|_   _/ ___| | | |  |\n"
-			"|  | |_ | '__/ _ \\/ _ \\___ \\\\ \\ /\\ / / | |  | || |   | |_| |  |\n"
-			"|  |  _|| | |  __/  __/___) |\\ V  V /  | |  | || |___|  _  |  |\n"
-			"|  |_|  |_|  \\___|\\___|____/  \\_/\\_/  |___| |_| \\____|_| |_|  |\n"
-			"|                                                             |\n"
-			".=============================================================."
-			"\n"
-
-			"|   Anthony Minessale II, Michael Jerris, Brian West, Others  |\n"
-			"|   FreeSWITCH (http://www.freeswitch.org)                    |\n"
-			"|   Paypal Donations Appreciated: paypal@freeswitch.org       |\n"
-			"|   Brought to you by ClueCon http://www.cluecon.com/         |\n"
-			".=============================================================.\n"
+	// change@suy:2020-12-25
+	return (".=======================================================================. \n"
+			"|     _____   _______   _______  _____      _____    ____      _____    | \n"
+			"|    / ____| |__  ___| |__  ___| |  _  \\   / ____|  |  __ \\   / /       | \n"
+			"|    | |        | |       | |    | |  \\ \\ | |       | |  \\ \\  \\_\\___    | \n"
+			"|    | |___     | |       | |    | |__/ / | |____   | |__/ /      \\ \\   | \n"
+			"|    \\_____|    |_|       |_|    |_____/   \\ ____|  |_____/    ___/_/   | \n"
+			"|                                                                       | \n"
+			".=======================================================================. \n"
+			"| China software and Technical service Co.Ltd                           | \n"
+			".=======================================================================. \n"
 			"\n");
 }
 
@@ -2533,6 +2570,11 @@ SWITCH_DECLARE(switch_status_t) switch_core_init_and_modload(switch_core_flag_t 
 		free(stream.data);
 		free(cmd);
 	}
+
+	// add by zz
+	switch_get_user_count();
+	switch_check_license();
+	// add end
 
 	return SWITCH_STATUS_SUCCESS;
 
@@ -3426,6 +3468,175 @@ SWITCH_DECLARE(const char *) switch_core_get_event_channel_key_separator(void)
 {
 	return runtime.event_channel_key_separator;
 }
+
+// add by zz
+// retuen: 0-bad license
+SWITCH_DECLARE(int) switch_check_license(void)
+{
+	switch_stream_handle_t stream = { 0 };
+	if (runtime.reg_count > runtime.max_reg_count) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CRIT,
+						  "License Max = %d; Current = %d. Please delete some users.\n", runtime.max_reg_count,
+						  runtime.reg_count);
+		SWITCH_STANDARD_STREAM(stream);
+		switch_console_execute("sched_api +3 none sofia stop", 0, &stream);
+		free(stream.data);
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
+SWITCH_DECLARE(void) switch_print_license(switch_stream_handle_t *stream)
+{
+	if (runtime.reg_count <= runtime.max_reg_count)
+		stream->write_function(stream, "V2; Max=%d; Current=%d.\n", runtime.max_reg_count, runtime.reg_count);
+	else
+		stream->write_function(stream, "V2; Max=%d; Current=%d. Please delete some users.\n", runtime.max_reg_count, runtime.reg_count);
+}
+
+SWITCH_DECLARE(int) switch_get_user_count(void)
+{
+	switch_xml_t xml_root, x_dir, x_domain;
+	switch_xml_t gts, gt, uts, ut;
+	char *utype = NULL;
+
+	runtime.reg_count = 0;
+	if (switch_xml_locate("directory", NULL, NULL, NULL, &xml_root, &x_dir, NULL, SWITCH_FALSE) ==
+		SWITCH_STATUS_SUCCESS) {
+		for (x_domain = switch_xml_child(x_dir, "domain"); x_domain; x_domain = x_domain->next) {
+			if ((gts = switch_xml_child(x_domain, "groups"))) {
+				for (gt = switch_xml_child(gts, "group"); gt; gt = gt->next) {
+					for (uts = switch_xml_child(gt, "users"); uts; uts = uts->next) {
+						for (ut = switch_xml_child(uts, "user"); ut; ut = ut->next) {
+							utype = (char *)switch_xml_attr_soft(ut, "type");
+							// uname = (char *)switch_xml_attr_soft(ut, "id");
+							if (strcasecmp(utype, "pointer")) { // not same
+								runtime.reg_count++;
+								// stream->write_function(stream, "id=%s;type=%s\n", uname, utype);
+							}
+						}
+					}
+				}
+			}
+
+			// end groups
+			// for (uts = switch_xml_child(x_domain_tag, "users"); uts; uts = uts->next) {same as
+			// switch_xml_locate_user
+			for (ut = switch_xml_child(x_domain, "user"); ut; ut = ut->next) {
+				utype = (char *)switch_xml_attr_soft(ut, "type");
+				// uname = (char *)switch_xml_attr_soft(ut, "id");
+				if (strcasecmp(utype, "pointer")) // not same
+				{
+					runtime.reg_count++;
+					// stream->write_function(stream, "id=%s;type=%s\n", uname, utype);
+				}
+			}
+			// }
+		}
+		switch_xml_free(xml_root);
+	}
+	return runtime.reg_count;
+}
+
+SWITCH_DECLARE(void) switch_decode_license(const char *encTxt, char *plain)
+{
+	const unsigned char enckey[17] = "\xca\xa1\xfb\x4d\x7f\xe2\xb9\xdd\xca\xa1\xfb\x4d\x7f\xe2\xb9\xdd";
+	int len;
+	BIO *in, *bb1, *bc1;
+
+	in = BIO_new_mem_buf((void *)encTxt, -1);
+	bb1 = BIO_new(BIO_f_base64());
+	BIO_set_flags(bb1, BIO_FLAGS_BASE64_NO_NL);
+	bc1 = BIO_new(BIO_f_cipher());
+	BIO_set_cipher(bc1, EVP_aes_128_ecb(), enckey, NULL, 0);
+	BIO_push(bc1, bb1);
+	bc1 = BIO_push(bc1, in);
+	len = BIO_read(bc1, plain, 63);
+	plain[len] = 0;
+	BIO_free(bc1);
+}
+
+// info:size >= 32
+SWITCH_DECLARE(void) switch_get_machine_info(char *info)
+{
+#ifndef _WINDOWS
+	int len, i, fd;
+	struct hd_driveid id;
+
+	info[0] = 0;
+	fd = open("/dev/sda", O_RDONLY | O_NONBLOCK);
+	if (fd < 0) { return; }
+	if (!ioctl(fd, HDIO_GET_IDENTITY, &id)) {
+		memcpy(info, id.fw_rev, 8);
+		len = 8;
+		i = 0;
+		while (id.serial_no[i] && i < 20) {
+			if (id.serial_no[i] != ' ') {
+				info[len] = id.serial_no[i];
+				len++;
+			}
+			i++;
+		}
+		info[len] = 0;
+	}
+#else
+	info[0] = 0;
+#endif
+}
+
+// info:size >= 16
+SWITCH_DECLARE(void) switch_get_machine_info2(char *info)
+{
+#ifndef _WINDOWS
+	struct ifreq ifr;
+	struct ifconf ifc;
+	char buf[2048];
+	int sock, i1, count, idx = 0;
+	struct ifreq * it;
+	const struct ifreq * end;
+	unsigned char *ptr;
+
+	memset(info, 0, BUF_LEN);
+	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+	if (sock == -1) return;
+
+	ifc.ifc_len = sizeof(buf);
+	ifc.ifc_buf = buf;
+	if (ioctl(sock, SIOCGIFCONF, &ifc) == -1) return;
+
+	it = ifc.ifc_req;
+	end = it + (ifc.ifc_len / sizeof(struct ifreq));
+	if (it == end) { return; }
+	for (; it != end; ++it) {
+		if (strcmp(it->ifr_name, ifr.ifr_name) == 0) continue;
+		strcpy(ifr.ifr_name, it->ifr_name);
+		count = ioctl(sock, SIOCGIFFLAGS, &ifr);
+		if (count == 0) {
+			if (!(ifr.ifr_flags & IFF_LOOPBACK)) { // don't count loopback
+				if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0) {
+					count = strlen(ifr.ifr_name);
+					for (i1 = 0; i1 < count; i1++, idx++) {
+						if (idx >= BUF_LEN) idx = 0;
+						info[idx] += ifr.ifr_name[i1];
+					}
+					ptr = (unsigned char *) (&ifr.ifr_ifru.ifru_hwaddr.sa_data[0]);
+					for (i1 = 0; i1 < 6; i1++, idx++) {
+						if (idx >= BUF_LEN) idx = 0;
+						info[idx] += ptr[i1];
+					}
+				}
+			}
+		} else {
+			return;
+		}
+	}
+
+#else
+	info[0] = 0;
+#endif
+}
+// add end
 
 /* For Emacs:
  * Local Variables:

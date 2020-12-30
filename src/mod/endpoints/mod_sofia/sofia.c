@@ -3164,7 +3164,10 @@ void *SWITCH_THREAD_FUNC sofia_profile_thread_run(switch_thread_t *thread, void 
 		goto end;
 	}
 
-	supported = switch_core_sprintf(profile->pool, "%s%s%spath, replaces", use_100rel ? "precondition, 100rel, " : "", use_timer ? "timer, " : "", use_rfc_5626 ? "outbound, " : "");
+	// modify by yianxi houlin 2017-4-12: add "Privacy", "Resource-Priority"
+	supported = switch_core_sprintf(profile->pool, "%s%s%s%s%spath, replaces", "Privacy,", "Resource-Priority,",
+									use_100rel ? "precondition, 100rel, " : "", use_timer ? "timer, " : "", use_rfc_5626 ? "outbound, " : "");
+	// modify end
 
 	if (sofia_test_pflag(profile, PFLAG_AUTO_NAT) && switch_nat_get_type()) {
 		if ( (! sofia_test_pflag(profile, PFLAG_TLS) || ! profile->tls_only) && switch_nat_add_mapping(profile->sip_port, SWITCH_NAT_UDP, NULL, SWITCH_FALSE) == SWITCH_STATUS_SUCCESS) {
@@ -7327,6 +7330,14 @@ static void sofia_handle_sip_i_state(switch_core_session_t *session, int status,
 						  switch_channel_get_name(channel), nua_callstate_name(ss_state), status);
 
 		if (r_sdp) {
+
+			// add by houlin 2020-12-15: 大华摄像头将recvonly替换成sendrecv
+			if (strstr(r_sdp, "Talk") && strstr(r_sdp, "recvonly")) {
+				char *ptr = strstr(r_sdp, "recvonly");
+				memcpy(ptr, "sendrecv", 8);
+			}
+			// add end
+
 			switch_channel_set_variable(channel, SWITCH_R_SDP_VARIABLE, r_sdp);
 
 			if (!(profile->mndlb & SM_NDLB_ALLOW_NONDUP_SDP) || (!zstr(tech_pvt->mparams.remote_sdp_str) && !strcmp(tech_pvt->mparams.remote_sdp_str, r_sdp))) {

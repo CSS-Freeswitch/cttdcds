@@ -45,6 +45,20 @@ int SLICE_SIZE = (SWITCH_DEFAULT_VIDEO_SIZE + 100);
 #define H263_MODE_B // else Mode A only
 #define KEY_FRAME_MIN_FREQ 250000
 
+// add by pengliang
+enum VIDEO_TYPE {
+	VIDEO_UNKNOWN,
+	VIDEO_PS_H264,
+	VIDEO_PS_H265,
+};
+
+enum AUDIO_TYPE {
+	AUDIO_UNKNOWN,
+	AUDIO_PS_G711A,
+	AUDIO_PS_G711U,
+};
+// add end
+
 // #define DUMP_ENCODER_CTX
 
 SWITCH_MODULE_LOAD_FUNCTION(mod_avcodec_load);
@@ -398,6 +412,8 @@ typedef struct h264_codec_context_s {
 	enum AVCodecID av_codec_id;
 	uint16_t last_seq; // last received frame->seq
 	int hw_encoder;
+
+	int m_reinit; // add by pengliang: reinit flag for ps
 } h264_codec_context_t;
 
 #ifndef AV_INPUT_BUFFER_PADDING_SIZE
@@ -1232,7 +1248,7 @@ static switch_status_t open_encoder(h264_codec_context_t *context, uint32_t widt
 	}
 
 	if (!context->encoder) {
-		context->encoder = avcodec_find_encoder(context->av_codec_id);
+		context->encoder = avcodec_find_encoder(AV_CODEC_ID_H264/*context->av_codec_id*/); // modify by pengliang
 	}
 
 	if (!context->encoder) {
@@ -1250,7 +1266,7 @@ static switch_status_t open_encoder(h264_codec_context_t *context, uint32_t widt
 	}
 
 	if (!aprofile) {
-		aprofile = find_profile(get_profile_name(context->av_codec_id), SWITCH_FALSE);
+		aprofile = find_profile(get_profile_name(AV_CODEC_ID_H264/*context->av_codec_id*/), SWITCH_FALSE); // modify by pengliang
 	}
 
 	if (!aprofile) return SWITCH_STATUS_FALSE;
@@ -1337,7 +1353,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 #endif
 		context->encoder_ctx->opaque = context;
 		av_opt_set_int(context->encoder_ctx->priv_data, "mb_info", SLICE_SIZE - 8, 0);
-	} else if (context->av_codec_id == AV_CODEC_ID_H264) {
+	} else if (context->av_codec_id == AV_CODEC_ID_H264 || context->av_codec_id == AV_CODEC_ID_H265) { //modify by pengliang
 		context->encoder_ctx->profile = aprofile->ctx.profile;
 		context->encoder_ctx->level = aprofile->ctx.level;
 
@@ -1375,6 +1391,33 @@ GCC_DIAG_ON(deprecated-declarations)
 
 	return SWITCH_STATUS_SUCCESS;
 }
+
+// add by pengliang
+static switch_status_t switch_ps_reinit(switch_codec_t *codec)
+{
+	h264_codec_context_t *context = NULL;
+	avcodec_profile_t *profile = NULL;
+
+	context = (h264_codec_context_t *)codec->private_info;
+	context->av_codec_id = AV_CODEC_ID_H265;
+	profile = find_profile(get_profile_name(context->av_codec_id), SWITCH_FALSE);
+
+	context->decoder = avcodec_find_decoder(context->av_codec_id);
+
+	context->decoder_ctx = avcodec_alloc_context3(context->decoder);
+	context->decoder_ctx->thread_count = profile->decoder_thread_count;
+	if (avcodec_open2(context->decoder_ctx, context->decoder, NULL) < 0) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Error openning codec\n");
+		goto error;
+	}
+
+	return SWITCH_STATUS_SUCCESS;
+
+error:
+	// todo, do some clean up
+	return SWITCH_STATUS_FALSE;
+}
+// add end
 
 static switch_status_t switch_h264_init(switch_codec_t *codec, switch_codec_flag_t flags, const switch_codec_settings_t *codec_settings)
 {
@@ -1454,6 +1497,32 @@ static void av_unused fill_avframe(AVFrame *pict, switch_image_t *img)
 					  pict->data, pict->linesize,
 					  img->d_w, img->d_h);
 }
+
+// add by pengliang
+static switch_status_t switch_ps_encode(switch_codec_t *codec, switch_frame_t *frame)
+{
+	// h264_codec_context_t *context = (h264_codec_context_t *) codec->private_info;
+	// AVCodecContext *avctx = context->encoder_ctx;
+	// int ret;
+	// int *got_output = &context->got_encoded_output;
+	// AVFrame *avframe = NULL;
+	// AVPacket *pkt = &context->encoder_avpacket;
+	// uint32_t width = 0;
+	// uint32_t height = 0;
+	// switch_image_t *img = frame->img;
+
+	switch_assert(frame);
+	frame->m = 0;
+
+	// if (frame->datalen < SWITCH_DEFAULT_VIDEO_SIZE) return SWITCH_STATUS_FALSE;
+
+	// width = img->d_w;
+	// height = img->d_h;
+
+	// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "switch_ps_encode:  %dx%d\n", width, height);
+	return SWITCH_STATUS_FALSE;
+}
+// add end
 
 static switch_status_t switch_h264_encode(switch_codec_t *codec, switch_frame_t *frame)
 {
@@ -2282,6 +2351,275 @@ static void load_config()
 	find_profile("H265", SWITCH_FALSE);
 }
 
+// add by pengliang houlin 2020-6-12
+
+// add by houlin 2020-6-15
+static switch_status_t buffer_ps(h264_codec_context_t *context, switch_frame_t *frame)
+{
+	switch_buffer_t *buffer = context->nalu_buffer;
+
+	switch_buffer_write(buffer, frame->data, frame->datalen);
+
+	if (frame->m) {
+		context->nalu_28_start = 0;
+	}
+
+	return SWITCH_STATUS_SUCCESS;
+}
+// add by houlin end
+
+static int m_vFrameLen, vAudioFrameLen, m_videoType, m_audioType;
+static unsigned char vFramePS[6 * 1024 * 1024];
+char audioBuf[100000];
+
+static int parseVideoPes(unsigned char* data, int size)
+{
+	if (size > 3) {
+		int len = ((unsigned char) data[2]) + 3;
+		if (size > len) {
+			memcpy(vFramePS + m_vFrameLen, data + len, size - len);
+			m_vFrameLen += size - len;
+		}
+	}
+
+	return 0;
+}
+
+static int parseAudioPes(unsigned char* data, int size)
+{
+	if (size > 3) {
+		int len = ((unsigned char) data[2]) + 3;
+		if (size > len) {
+			memcpy(audioBuf, data + len, size - len);
+			vAudioFrameLen += size - len;
+		}
+	}
+	return 0;
+}
+
+static int parsePSM(switch_codec_t *codec, unsigned char* data, int size)
+{
+	int psm_length, ps_info_length, es_map_length;
+
+	psm_length = ((unsigned short) data[0]) * 16 + (unsigned short) data[1];
+	// avio_r8(pb);
+	// avio_r8(pb);
+	data += 2 + 2;
+	ps_info_length = ((unsigned short) data[0]) * 16 + (unsigned short) data[1]; // avio_rb16(pb);
+
+	/* skip program_stream_info */
+	data += 2 + ps_info_length; //avio_skip(pb, ps_info_length);
+	// es_map_length = avio_rb16(pb);
+	/* Ignore es_map_length, trust psm_length */
+	es_map_length = psm_length - ps_info_length - 10;
+
+	data += 2;
+	/* at least one es available? */
+	while (es_map_length >= 4) {
+		unsigned char type = data[0]; //avio_r8(pb);
+		// unsigned char es_id = data[1]; //avio_r8(pb);
+		// data += 2;
+		uint16_t es_info_length = ((unsigned short) data[2]) * 16 + (unsigned short) data[3]; // avio_rb16(pb);
+
+		/* remember mapping from stream id to stream type */
+		// m->psm_es_type[es_id] = type;
+		/* skip program_stream_info */
+		// avio_skip(pb, es_info_length);
+
+		if (0x1b == type) {
+			m_videoType = VIDEO_PS_H264;
+			// TRACE("parsePSM: video type h264\n");
+			// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: video type h264\n");
+		} else if (0x24 == type) {
+			h264_codec_context_t *context = NULL;
+			m_videoType = VIDEO_PS_H265;
+			// TRACE("parsePSM: video type h265\n");
+			// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: video type h265\n");
+			context = (h264_codec_context_t *)codec->private_info;
+			if (0 == context->m_reinit) {
+				switch_ps_reinit(codec); //pengliang: reinit for h264
+				context->m_reinit = 1;
+			}
+		}
+
+		if (0x90 == type) {
+			m_audioType = AUDIO_PS_G711A;
+			// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: audio type G711A\n");
+		} else if (0x91 == type) {
+			m_audioType = AUDIO_PS_G711U;
+			// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "parsePSM: audio type G711U\n");
+		}
+
+		data += 4 + es_info_length;
+		es_map_length -= 4 + es_info_length;
+	}
+    // avio_rb32(pb); /* crc32 */
+
+	/* if (m_videoCodecOpened == false) {
+		m_videoCodecOpened = true;
+	} */
+
+	return 2 + psm_length;
+}
+
+static int parsePsPacket(switch_codec_t *codec, unsigned char* data, int size)
+{
+	unsigned char *buffer;
+	int length;
+	int chunk_flag;
+	unsigned short chunk_size;
+	int extlen;
+
+	m_vFrameLen = 0;
+	vAudioFrameLen = 0;
+
+	if (size < 14 || 0xba010000 != (*(int *) data)) return -1;
+
+	// TRACE("Found PS header\n");
+	// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Found PS header\n");
+
+	extlen = ((unsigned char) (data[13])) & 0x07;
+	if (size <= 14 + extlen) return -1;
+
+	buffer = data + (14 + extlen);
+	length = size - extlen - 14;
+	while (length > 0) {
+		if (length < 6) break;
+		chunk_flag = *(int *)buffer;
+		chunk_size = ntohs(*(unsigned short *) (buffer + 4));
+
+		if (chunk_size + 6 > length) break;
+		// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "chunk_flag=%x\n",chunk_flag);
+
+		switch (chunk_flag)	{
+			case 0xe0010000:
+				// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Found Video PES,chunk_size=%d\n",chunk_size);
+				// TRACE("Found Video PES\n");
+				parseVideoPes(buffer + 6, chunk_size);
+				break;
+			case 0xc0010000:
+				// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Found Audio PES,chunk_size=%d\n",chunk_size);
+				// TRACE("Found Audio PES\n");
+				parseAudioPes(buffer + 6, chunk_size);
+				// playG711(buffer + 19, audSize);
+			case 0xbc010000:
+				// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Found PSM\n");
+				// TRACE("Found PSM\n");
+				parsePSM(codec, buffer + 4, chunk_size + 2);
+				break;
+		}
+
+		buffer += (6 + chunk_size);
+		length -= (6 + chunk_size);
+	}
+
+	return 0;
+}
+
+static int isPsHead(unsigned char *data)
+{
+	if (0xba010000 == *(int *) data)
+		return 1;
+	else
+		return 0;
+}
+
+static switch_status_t switch_ps_decode(switch_codec_t *codec, switch_frame_t *frame)
+{
+	h264_codec_context_t *context = (h264_codec_context_t *) codec->private_info;
+	AVCodecContext *avctx = context->decoder_ctx;
+	switch_status_t status;
+	uint8_t *data;
+
+	switch_assert(frame);
+
+	// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "len: %d ts: %u mark:%d\n", frame->datalen, ntohl(frame->timestamp), frame->m);
+
+	/* if (context->last_received_timestamp && context->last_received_timestamp != frame->timestamp &&
+		(!frame->m) && (!context->last_received_complete_picture)) {
+		// possible packet loss
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Packet Loss, skip privousely received packets\n");
+		switch_buffer_zero(context->nalu_buffer);
+	} */
+
+	context->last_received_timestamp = frame->timestamp;
+	context->last_received_complete_picture = frame->m ? SWITCH_TRUE : SWITCH_FALSE;
+	if (isPsHead((unsigned char*) frame->data)) {
+		// 解码
+		uint32_t size = switch_buffer_inuse(context->nalu_buffer);
+		AVPacket pkt = { 0 };
+		AVFrame *picture;
+		int got_picture = 0;
+		int decoded_len;
+		// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "is PS Head!");
+		if (size > 0) {
+			av_init_packet(&pkt);
+			switch_buffer_write(context->nalu_buffer, ff_input_buffer_padding, sizeof(ff_input_buffer_padding));
+			switch_buffer_peek_zerocopy(context->nalu_buffer, (const void **) (&pkt.data));
+			pkt.size = size;
+			data = (uint8_t *) pkt.data;
+
+			if (parsePsPacket(codec, (unsigned char *) data, pkt.size) != 0)
+				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "parsePsPacket ERROR!!!, PS datalen=%d\n", size);
+
+			memcpy(data, vFramePS, m_vFrameLen);
+			pkt.size = m_vFrameLen;
+			// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Frame datalen=%d, data:",frame->datalen);
+			if (!context->decoder_avframe) context->decoder_avframe = av_frame_alloc();
+			picture = context->decoder_avframe;
+			switch_assert(picture);
+			GCC_DIAG_OFF(deprecated-declarations)
+			decoded_len = avcodec_decode_video2(avctx, picture, &got_picture, &pkt);
+			GCC_DIAG_ON(deprecated-declarations)
+
+			// switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "buf size: %d got pic: %d decoded_len: %d [%dx%d]\n", size, got_picture, decoded_len, picture->width, picture->height);
+
+			if (got_picture && decoded_len > 0) {
+				int width = picture->width;
+				int height = picture->height;
+
+				if (!context->img || (context->img->d_w != width || context->img->d_h != height)) {
+					switch_img_free(&context->img);
+					context->img = switch_img_alloc(NULL, SWITCH_IMG_FMT_I420, width, height, 1);
+					switch_assert(context->img);
+				}
+#if 0
+				context->img->w = picture->linesize[0];
+				context->img->h = picture->linesize[1];
+				context->img->d_w = width;
+				context->img->d_h = height;
+#endif
+				switch_I420_copy2(picture->data, picture->linesize,
+								  context->img->planes, context->img->stride,
+								  width, height);
+
+				frame->img = context->img;
+			}
+
+			av_frame_unref(picture);
+		}
+
+		switch_buffer_zero(context->nalu_buffer);
+		context->nalu_28_start = 0;
+		// switch_set_flag(frame, SFF_USE_VIDEO_TIMESTAMP);
+		// 存储
+		status = buffer_ps(context, frame);
+		// return SWITCH_STATUS_SUCCESS;
+	} else {
+		status = buffer_ps(context, frame);
+	}
+
+	if (status == SWITCH_STATUS_RESTART) {
+		switch_set_flag(frame, SFF_WAIT_KEY_FRAME);
+		switch_buffer_zero(context->nalu_buffer);
+		context->nalu_28_start = 0;
+		return SWITCH_STATUS_MORE_DATA;
+	}
+
+	return SWITCH_STATUS_SUCCESS;
+}
+// add by pengliang houlin end
+
 SWITCH_MODULE_LOAD_FUNCTION(mod_avcodec_load)
 {
 	switch_codec_interface_t *codec_interface;
@@ -2292,6 +2630,12 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_avcodec_load)
 	SWITCH_ADD_CODEC(codec_interface, "H264 Video");
 	switch_core_codec_add_video_implementation(pool, codec_interface, 99, "H264", NULL,
 											   switch_h264_init, switch_h264_encode, switch_h264_decode, switch_h264_control, switch_h264_destroy);
+
+	// add by pengliang
+	SWITCH_ADD_CODEC(codec_interface, "PS Video");
+	switch_core_codec_add_video_implementation(pool, codec_interface, 102, "PS", NULL,
+											   switch_h264_init, switch_ps_encode, switch_ps_decode, switch_h264_control, switch_h264_destroy);
+	// add end
 
 	SWITCH_ADD_CODEC(codec_interface, "H263 Video");
 	switch_core_codec_add_video_implementation(pool, codec_interface, 34, "H263", NULL,

@@ -1041,22 +1041,19 @@ static const char *basic_gets(int *cnt)
 	return command_buf;
 }
 
+// change@suy:2020-12-25
 static const char *banner =
-	".=======================================================.\n"
-    "|            _____ ____     ____ _     ___              |\n"
-    "|           |  ___/ ___|   / ___| |   |_ _|             |\n"
-    "|           | |_  \\___ \\  | |   | |    | |              |\n"
-    "|           |  _|  ___) | | |___| |___ | |              |\n"
-    "|           |_|   |____/   \\____|_____|___|             |\n"
-	"|                                                       |\n"
-	".=======================================================.\n"
-    "| Anthony Minessale II, Ken Rice,                       |\n"
-    "| Michael Jerris, Travis Cross                          |\n"
-    "| FreeSWITCH (http://www.freeswitch.org)                |\n"
-    "| Paypal Donations Appreciated: paypal@freeswitch.org   |\n"
-    "| Brought to you by ClueCon http://www.cluecon.com/     |\n"
-    ".=======================================================.\n"
-    "\n";
+	".=======================================================================. \n"
+	"|     _____   _______   _______  _____      _____    ____      _____    | \n"
+	"|    / ____| |__  ___| |__  ___| |  _  \\   / ____|  |  __ \\   / /       | \n"
+	"|    | |        | |       | |    | |  \\ \\ | |       | |  \\ \\  \\_\\___    | \n"
+	"|    | |___     | |       | |    | |__/ / | |____   | |__/ /      \\ \\   | \n"
+	"|    \\_____|    |_|       |_|    |_____/   \\ ____|  |_____/    ___/_/   | \n"
+	"|                                                                       | \n"
+	".=======================================================================. \n"
+	"| China software and Technical service Co.Ltd                           | \n"
+	".=======================================================================. \n"
+	"\n";
 
 static const char *inf = "Type /help <enter> to see a list of commands\n\n\n";
 
@@ -1759,7 +1756,7 @@ int main(int argc, char *argv[])
 		expand_prompt(profile->prompt_string, sizeof(profile->prompt_string), profile);
 		snprintf(bare_prompt_str, sizeof(bare_prompt_str), "%s> ", profile->prompt_string);
 	} else {
-		snprintf(bare_prompt_str, sizeof(bare_prompt_str), "freeswitch@%s> ", switchname);
+		snprintf(bare_prompt_str, sizeof(bare_prompt_str), "cttdcds@%s> ", switchname); // change@suy:2020-12-25
 	}
 
 	bare_prompt_str_len = (int)strlen(bare_prompt_str);
