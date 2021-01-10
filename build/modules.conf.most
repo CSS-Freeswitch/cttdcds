@@ -39,6 +39,8 @@ applications/mod_prefix
 applications/mod_redis
 applications/mod_rss
 applications/mod_signalwire
+#add@suy:2021-1-3
+applications/mod_smsctl
 applications/mod_sms
 applications/mod_snapshot
 applications/mod_snom

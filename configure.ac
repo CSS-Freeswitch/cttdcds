@@ -1855,6 +1855,7 @@ fi
 # we never use this, and hard setting it will make cross compile work better
 ac_cv_file_dbd_apr_dbd_mysql_c=no
 
+# change@suy:2021-1-3 自动生成mod_smsctl模块的Makefile
 AC_CONFIG_FILES([Makefile
 		build/Makefile
 		tests/unit/Makefile
@@ -1904,6 +1905,7 @@ AC_CONFIG_FILES([Makefile
 		src/mod/applications/mod_rss/Makefile
 		src/mod/applications/mod_skel/Makefile
 		src/mod/applications/mod_signalwire/Makefile
+		src/mod/applications/mod_smsctl/Makefile
 		src/mod/applications/mod_sms/Makefile
 		src/mod/applications/mod_sms_flowroute/Makefile
 		src/mod/applications/mod_snapshot/Makefile
