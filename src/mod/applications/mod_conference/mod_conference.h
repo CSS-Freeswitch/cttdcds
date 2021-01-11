@@ -909,6 +909,7 @@ struct conference_member {
 typedef enum {
 	CONF_API_SUB_ARGS_SPLIT,
 	CONF_API_SUB_MEMBER_TARGET,
+	CONF_API_SUB_MEMBER_NUMBER_TARGET, // add@suy:2021-1-6 此枚举变量用来分发通过号码控制会议成员的API
 	CONF_API_SUB_ARGS_AS_ONE
 } conference_fntype_t;
 
@@ -1099,6 +1100,7 @@ conference_relationship_t *conference_member_add_relationship(conference_member_
 conference_member_t *conference_member_get(conference_obj_t *conference, uint32_t id);
 conference_member_t *conference_member_get_by_var(conference_obj_t *conference, const char *var, const char *val);
 conference_member_t *conference_member_get_by_role(conference_obj_t *conference, const char *role_id);
+conference_member_t *conference_member_get_by_number(conference_obj_t *conference, const char *number); //add@suy:2021-1-6
 switch_status_t conference_member_del_relationship(conference_member_t *member, uint32_t id);
 switch_status_t conference_member_add(conference_obj_t *conference, conference_member_t *member);
 switch_status_t conference_member_del(conference_obj_t *conference, conference_member_t *member);

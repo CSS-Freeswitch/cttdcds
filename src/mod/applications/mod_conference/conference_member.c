@@ -487,6 +487,56 @@ conference_member_t *conference_member_get_by_role(conference_obj_t *conference,
 	return member;
 }
 
+
+/* add@suy:2021-1-6 遍历会议成员列表，根据成员号码找到相应的成员并返回其指针 */
+conference_member_t *conference_member_get_by_number(conference_obj_t *conference, const char *number)
+{
+	conference_member_t *member = NULL;
+
+	switch_assert(conference != NULL);
+	if (zstr(number)) {
+		return NULL;
+	}
+
+	switch_mutex_lock(conference->member_mutex);
+	for (member = conference->members; member; member = member->next) {
+		switch_channel_t *channel = NULL;
+		switch_caller_profile_t *profile = NULL;
+
+		if (conference_utils_member_test_flag(member, MFLAG_NOCHANNEL)) {
+			continue;
+		}
+
+		channel = switch_core_session_get_channel(member->session);
+		profile = switch_channel_get_caller_profile(channel);
+
+		if (!zstr(profile->caller_id_number) && !strcmp(number, profile->caller_id_number)) {
+			break;
+		}
+	}
+
+	if (member) {
+		if (!conference_utils_member_test_flag(member, MFLAG_INTREE) ||
+			conference_utils_member_test_flag(member, MFLAG_KICKED) ||
+			(member->session && !switch_channel_up(switch_core_session_get_channel(member->session)))) {
+
+			/* member is kicked or hanging up so forget it */
+			member = NULL;
+		}
+	}
+
+	if (member) {
+		if (switch_thread_rwlock_tryrdlock(member->rwlock) != SWITCH_STATUS_SUCCESS) {
+			/* if you cant readlock it's way to late to do anything */
+			member = NULL;
+		}
+	}
+
+	switch_mutex_unlock(conference->member_mutex);
+
+	return member;
+}
+
 void conference_member_check_channels(switch_frame_t *frame, conference_member_t *member, switch_bool_t in)
 {
 	if (member->conference->channels != member->read_impl.number_of_channels || conference_utils_member_test_flag(member, MFLAG_POSITIONAL)) {

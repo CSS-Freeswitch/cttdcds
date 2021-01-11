@@ -243,6 +243,19 @@ static inline void *switch_must_realloc(void *_b, size_t _z)
 	return m;
 }
 
+// add@suy:2021-1-10
+static inline void *switch_must_append(void *_b, size_t _z, size_t *_n)
+{
+	void *m = _b;
+	if (_z > *_n) {
+		*_n = _z;
+		m = realloc(_b, _z);
+		switch_assert(m);
+	}
+	return m;
+}
+// add end
+
 static inline char *switch_must_strdup(const char *_s)
 {
 	char *s = strdup(_s);

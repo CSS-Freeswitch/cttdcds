@@ -470,6 +470,15 @@ SWITCH_DECLARE(switch_xml_t) switch_xml_child(switch_xml_t xml, const char *name
 	return xml;
 }
 
+/* add@suy:2021-1-7 根据标签名寻找子元素(忽略大小写)，返回找到的第一个子元素 */
+SWITCH_DECLARE(switch_xml_t) switch_xml_child_ignorcase(switch_xml_t xml, const char *name)
+{
+	xml = (xml) ? xml->child : NULL;
+	while (xml && strcasecmp(name, xml->name))
+		xml = xml->sibling;
+	return xml;
+}
+
 /* returns the Nth tag with the same name in the same subsection or NULL if not found */
 switch_xml_t switch_xml_idx(switch_xml_t xml, int idx)
 {

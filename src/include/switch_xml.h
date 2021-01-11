@@ -156,6 +156,13 @@ SWITCH_DECLARE(switch_xml_t) switch_xml_parse_fp(_In_ FILE * fp);
 ///\return an xml node or NULL
 SWITCH_DECLARE(switch_xml_t) switch_xml_child(_In_ switch_xml_t xml, _In_z_ const char *name);
 
+///\brief add@suy:2021-1-7 根据标签名寻找子元素(忽略大小写)，返回找到的第一个子元素
+///\ if not found
+///\param xml xml节点
+///\param name 子元素的标签名
+///\return 一个xml节点或者NULL
+SWITCH_DECLARE(switch_xml_t) switch_xml_child_ignorcase(_In_ switch_xml_t xml, _In_z_ const char *name);
+
 ///\brief find a child tag in a node called 'childname' with an attribute 'attrname' which equals 'value'
 ///\param node the xml node
 ///\param childname the child tag name

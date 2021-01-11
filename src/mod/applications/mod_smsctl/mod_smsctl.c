@@ -26,19 +26,21 @@
  * Anthony Minessale II <anthm@freeswitch.org>
  * Raymond Chandler <intralanman@freeswitch.org>
  *
- * mod_sms.c -- Abstract SMS
+ * mod_smsctl.c -- Abstract SMSCTL
  *
  */
 #include <switch.h>
-#define SMS_CHAT_PROTO "GLOBAL_SMS"
-#define MY_EVENT_SEND_MESSAGE "SMS::SEND_MESSAGE"
-#define MY_EVENT_DELIVERY_REPORT "SMS::DELIVERY_REPORT"
+/* change@suy:2021-1-3 */
+#define SMS_CHAT_PROTO "GLOBAL_SMSCTL"
+#define MY_EVENT_SEND_MESSAGE "SMSCTL::SEND_MESSAGE"
+#define MY_EVENT_DELIVERY_REPORT "SMSCTL::DELIVERY_REPORT"
 
 /* Prototypes */
-SWITCH_MODULE_SHUTDOWN_FUNCTION(mod_sms_shutdown);
-SWITCH_MODULE_RUNTIME_FUNCTION(mod_sms_runtime);
-SWITCH_MODULE_LOAD_FUNCTION(mod_sms_load);
-SWITCH_MODULE_DEFINITION(mod_sms, mod_sms_load, mod_sms_shutdown, NULL);
+SWITCH_MODULE_SHUTDOWN_FUNCTION(mod_smsctl_shutdown);
+SWITCH_MODULE_RUNTIME_FUNCTION(mod_smsctl_runtime);
+SWITCH_MODULE_LOAD_FUNCTION(mod_smsctl_load);
+SWITCH_MODULE_DEFINITION(mod_smsctl, mod_smsctl_load, mod_smsctl_shutdown, NULL);
+/* change end */
 
 
 static void send_report(switch_event_t *event, const char * Status) {
@@ -481,6 +483,286 @@ static switch_status_t chat_send(switch_event_t *message_event)
 
 }
 
+
+/**
+ * @brief add@suy:2021-1-7 此函数解析sip message消息里会议控制相关xml并执行相关动作
+ *
+ * xml的必须包含conference或conferenceID标签
+ */
+static switch_status_t conference_control(switch_event_t *message_event, switch_xml_t xctl)
+{
+	switch_xml_t xconf, xtype, xaction, xuser, xparam;		// xml相关节点
+	switch_status_t status = SWITCH_STATUS_SUCCESS;			// 返回状态
+	switch_stream_handle_t stream = { 0 };					// api执行的输出流
+
+	/* xml节点对应的变量 */
+	char *conf = NULL, *action = NULL;
+	char *real_action = NULL;
+	char *user = NULL;
+	char *param = NULL;
+	switch_stream_handle_t param_stream = { 0 };			// 参数输入流
+	switch_bool_t isvideo = SWITCH_TRUE;
+
+	/* api命令输入流 */
+	switch_stream_handle_t arg_stream = { 0 };
+
+	/* xml标签中寻找会议号，会议号包含在conference或者conferenceID标签内 */
+	if (!(xconf = switch_xml_child_ignorcase(xctl, "conference")) &&
+		!(xconf = switch_xml_child_ignorcase(xctl, "conferenceID"))) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Couldn't find conference!\n");
+		switch_goto_status(SWITCH_STATUS_FALSE, done);
+	}
+
+	conf = switch_strip_whitespace(xconf->txt); // 去除字符串两端空白符
+
+	/* xml标签中寻找执行的动作标签 */
+	if (!(xaction = switch_xml_child_ignorcase(xctl, "action"))) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Couldn't find action!\n");
+		switch_goto_status(SWITCH_STATUS_FALSE, done);
+	}
+
+	action = switch_strip_whitespace(xaction->txt); // 去除字符串两端空白符
+
+	SWITCH_STANDARD_STREAM(stream);
+
+	/* 呼叫类动作(需要会议号、会议类型和成员列表，可以包含flag)，例如：
+		<control>
+			<conference>3000</conference>
+			<type>video</type>
+			<action>bgdial</action>
+			<user>1011</user>							<-- 没有flag -->
+			<user flags="mute">1012</user>				<-- 只含有一个flag -->
+			<user flags="mute|mintwo">72110114</user>	<-- 含有多个flag -->
+		<control>
+	*/
+	if (!strcasecmp(action, "bgdial")) {
+		real_action = "bgdial";
+	} else if (!strcasecmp(action, "bgdial")) {
+		real_action = "dial";
+	}
+
+	if (real_action) {
+		/* xml标签中寻找会议类型，有video和audio两种，默认为video */
+		if ((xtype = switch_xml_child_ignorcase(xctl, "type"))) {
+			if (!strcmp(xtype->txt, "audio")) {
+				isvideo = SWITCH_FALSE;
+			} else if (strcmp(xtype->txt, "video")) {
+				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Type is not audio or video!\n");
+				switch_goto_status(SWITCH_STATUS_FALSE, done);
+			}
+		} else {
+			isvideo = SWITCH_TRUE;
+		}
+
+		/* xml标签中寻找第一个成员的标签 */
+		if (!(xuser = switch_xml_child_ignorcase(xctl, "user")) &&
+			!(xuser = switch_xml_child_ignorcase(xctl, "userID"))) {
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Couldn't find user!\n");
+			switch_goto_status(SWITCH_STATUS_FALSE, done);
+		}
+
+		/* 遍历成员列表 */
+		for (; xuser; xuser = xuser->next) {
+			/* 判断是否含有flag */
+			const char *flags = switch_xml_attr(xuser, "flags");
+			switch_bool_t have_flags = !zstr(flags) && strcasecmp(flags, "none");
+
+			user = switch_strip_whitespace(xuser->txt);
+
+			/* 格式化写入命令 */
+			SWITCH_STANDARD_STREAM(arg_stream);
+			arg_stream.write_function(&arg_stream, "%s%s%s%s%s %s user/%s", conf,
+									  isvideo?"@mcu":"",have_flags?"+flags{":"",
+									  have_flags?flags:"", have_flags?"}":"", real_action, user);
+
+			/* 执行命令 */
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "EXCUTE API: conference %s\n", (char *) arg_stream.data);
+			switch_api_execute("conference", (char *) arg_stream.data, NULL, &stream);
+
+			switch_safe_free(user);
+			switch_safe_free(arg_stream.data);
+		}
+
+		switch_goto_status(SWITCH_STATUS_SUCCESS, done);
+	}
+
+	/* 全局类动作(只需要会议号)，例如：
+		<control>
+			<conference>3000</conference>
+			<action>exit</action>
+		<control>
+	*/
+	if (!strcasecmp(action, "exit")) {
+		real_action = "kick all";
+	}
+
+	/* 全局类动作的执行 */
+	if (real_action) {
+		/* 格式化写入命令 */
+		SWITCH_STANDARD_STREAM(arg_stream);
+		arg_stream.write_function(&arg_stream, "%s %s", conf, real_action);
+
+		/* 执行命令 */
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "EXCUTE API: conference %s\n", (char *) arg_stream.data);
+		switch_api_execute("conference", (char *) arg_stream.data, NULL, &stream);
+
+		switch_goto_status(SWITCH_STATUS_SUCCESS, done);
+	}
+
+	/* 全局类动作(需要会议号和全局参数)，例如：
+		<control>
+			<conference>3000</conference>
+			<action>layout</action>
+			<param>2x2</param>
+		<control>
+	*/
+	if (!strcasecmp(action, "layout")) {
+		real_action = "vid-layout";
+	}
+
+	if (real_action) {
+		/* xml标签中寻找第一个全局参数的标签 */
+		if (!(xparam = switch_xml_child_ignorcase(xctl, "param"))) {
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Couldn't find param!\n");
+			switch_goto_status(SWITCH_STATUS_FALSE, done);
+		}
+
+		/* 遍历参数列表，并写入全局参数流 */
+		SWITCH_STANDARD_STREAM(param_stream);
+		for (; xparam; xparam = xparam->next) {
+			param = switch_strip_whitespace(xparam->txt);
+			param_stream.write_function(&param_stream, "%s ", param);
+			switch_safe_free(param);
+		}
+		/* 格式化写入命令 */
+		SWITCH_STANDARD_STREAM(arg_stream);
+		arg_stream.write_function(&arg_stream, "%s %s %s", conf, real_action, (char *) param_stream.data);
+
+		/* 执行命令 */
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "EXCUTE API: conference %s\n", (char *) arg_stream.data);
+		switch_api_execute("conference", (char *) arg_stream.data, NULL, &stream);
+
+		switch_goto_status(SWITCH_STATUS_SUCCESS, done);
+	}
+
+	/* 成员类动作(需要会议号和成员列表)，例如：
+		<control>
+			<conference>3000</conference>
+			<action>kick</action>
+			<user>1011</user>
+		<control>
+	*/
+	if (!strcasecmp(action, "kick")) {
+		real_action = "num-kick";
+	} else if (!strcasecmp(action, "mute")) {
+		real_action = "num-mute";
+	} else if (!strcasecmp(action, "vmute")) {
+		real_action = "num-vmute";
+	} else if (!strcasecmp(action, "unmute")) {
+		real_action = "num-unmute";
+	} else if (!strcasecmp(action, "unvmute")) {
+		real_action = "num-unvmute";
+	}
+
+	if (real_action) {
+		/* xml标签中寻找第一个成员的标签 */
+		if (!(xuser = switch_xml_child_ignorcase(xctl, "user")) &&
+			!(xuser = switch_xml_child_ignorcase(xctl, "userID"))) {
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Couldn't find user!\n");
+			switch_goto_status(SWITCH_STATUS_FALSE, done);
+		}
+
+		/* 遍历成员列表 */
+		for (; xuser; xuser = xuser->next) {
+			user = switch_strip_whitespace(xuser->txt);
+
+			/* 格式化写入命令 */
+			SWITCH_STANDARD_STREAM(arg_stream);
+			arg_stream.write_function(&arg_stream, "%s %s %s", conf, real_action, user);
+
+			/* 执行命令 */
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "EXCUTE API: conference %s\n", (char *) arg_stream.data);
+			switch_api_execute("conference", (char *) arg_stream.data, NULL, &stream);
+
+			switch_safe_free(user);
+			switch_safe_free(arg_stream.data);
+		}
+
+		switch_goto_status(SWITCH_STATUS_SUCCESS, done);
+	}
+
+	/* 成员类动作(需要会议号、成员列表和参数)，例如：
+		<control>
+			<conference>3000</conference>
+			<action>layer</action>
+			<user param="1">1011</user>
+			<user param="2">1012</user>
+		<control>
+	*/
+	if (!strcasecmp(action, "layer")) {
+		real_action = "num-layer";
+	} else if (!strcasecmp(action, "banner")) {
+		real_action = "num-banner";
+	}
+
+	if (real_action) {
+		/* xml标签中寻找第一个成员的标签 */
+		if (!(xuser = switch_xml_child_ignorcase(xctl, "user")) &&
+			!(xuser = switch_xml_child_ignorcase(xctl, "userID"))) {
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Couldn't find user!\n");
+			switch_goto_status(SWITCH_STATUS_FALSE, done);
+		}
+
+		/* xml标签中寻找第一个全局参数的标签 */
+		xparam = switch_xml_child_ignorcase(xctl, "param");
+
+		/* 遍历参数列表，并写入参数流 */
+		SWITCH_STANDARD_STREAM(param_stream);
+		for (; xparam; xparam = xparam->next) {
+			param = switch_strip_whitespace(xparam->txt);
+			param_stream.write_function(&param_stream, "%s ", param);
+			switch_safe_free(param);
+		}
+
+		/* 遍历成员列表 */
+		for (; xuser; xuser = xuser->next) {
+			/* 寻找用户参数 */
+			const char *param_s = switch_xml_attr(xuser, "param");
+
+			user = switch_strip_whitespace(xuser->txt);
+			param = switch_strip_whitespace(param_s);
+
+			/* 格式化写入命令 */
+			SWITCH_STANDARD_STREAM(arg_stream);
+			arg_stream.write_function(&arg_stream, "%s %s %s %s %s", conf, real_action, user, param /* 用户参数 */, (char *) param_stream.data /* 全局参数 */);
+
+			/* 执行命令 */
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "EXCUTE API: conference %s\n", (char *) arg_stream.data);
+			switch_api_execute("conference", (char *) arg_stream.data, NULL, &stream);
+
+			switch_safe_free(user);
+			switch_safe_free(param);
+			switch_safe_free(arg_stream.data);
+		}
+
+		switch_goto_status(SWITCH_STATUS_SUCCESS, done);
+	}
+
+	switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "Cannot find action %s", action);
+	switch_goto_status(SWITCH_STATUS_FALSE, done);
+
+  done:
+	switch_safe_free(conf);
+	switch_safe_free(action);
+	switch_safe_free(user);
+	switch_safe_free(param);
+	switch_safe_free(arg_stream.data);
+	switch_safe_free(param_stream.data);
+	switch_safe_free(stream.data);
+
+	return status;
+}
+
 SWITCH_STANDARD_CHAT_APP(info_function)
 {
 	char *buf;
@@ -603,8 +885,136 @@ SWITCH_STANDARD_CHAT_APP(reply_function)
 	return SWITCH_STATUS_SUCCESS;
 }
 
-/* Macro expands to: switch_status_t mod_sms_load(switch_loadable_module_interface_t **module_interface, switch_memory_pool_t *pool) */
-SWITCH_MODULE_LOAD_FUNCTION(mod_sms_load)
+/**
+ * @brief add@suy:2021-1-4 此函数解析sip message消息里的cttcds命令并执行
+ *
+ * 可以在一个sip消息里携带多条命令，每条命令为单独的一行
+ */
+SWITCH_STANDARD_CHAT_APP(cmdctl_function)
+{
+	char *cmd_data, *cmd = NULL, *arg = NULL;
+	char *pdata, *end;
+
+	if (!data) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "No cmd data\n");
+		return SWITCH_STATUS_FALSE;
+	}
+
+	if (!(cmd_data = strdup(data))) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Couldn't create cmd data\n");
+		return SWITCH_STATUS_FALSE;
+	}
+
+	/* 遍历字符串的每一行(每一行就是一条命令)，例如：
+		conference 3000 bgdial user/1011
+		conference 3000 bgdial user/1012
+	*/
+	for (pdata = cmd_data; *pdata; ) {
+		switch_stream_handle_t stream = { 0 };
+
+		/* 跳过开始的空白符，确定命令字符串的开始位置 */
+		while (isspace(*pdata)) {
+			pdata++;
+		}
+		if (*pdata) {
+			cmd = pdata;
+		} else {
+			break;
+		}
+
+		/* 遍历命令字符串，并确定命令字符串的结束位置 */
+		while (*pdata && !isspace(*pdata)) {
+			pdata++;
+		}
+		if (*pdata) {
+			end = pdata;
+
+			/* 跳过除了换行符的空白符，并根据是否遍历到换行符确定此行命令是否含有参数 */
+			while (isspace(*pdata) && *pdata != '\n') {
+				pdata++;
+			}
+			if (*pdata != '\n') {
+				/* 包含参数，将参数遍历出来 */
+				arg = pdata;
+				while (*pdata && *pdata != '\n') {
+					pdata++;
+				}
+				if (*pdata) {
+					*pdata++ = '\0';
+				}
+			} else {
+				/* 不包含参数 */
+				arg = NULL;
+			}
+
+			*end = '\0';
+		}
+
+		SWITCH_STANDARD_STREAM(stream);
+
+		/* 执行命令 */
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "EXCUTE API: %s %s\n", cmd, arg);
+		switch_api_execute(cmd, arg, NULL, &stream);
+
+		switch_safe_free(stream.data);
+	}
+
+	free(cmd_data);
+
+	return SWITCH_STATUS_SUCCESS;
+}
+
+/**
+ * @brief add@suy:2021-1-6 此函数解析sip message消息里的xml并执行相应的动作
+ *
+ * xml的根元素必须为control
+ */
+SWITCH_STANDARD_CHAT_APP(xmlctl_function)
+{
+	char *xml_data = NULL;
+	switch_xml_t xctl = NULL, xtype;
+	switch_status_t status = SWITCH_STATUS_SUCCESS;
+
+	if (!data) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "No XML data!\n");
+		switch_goto_status(SWITCH_STATUS_FALSE, done);
+	}
+
+	if (!(xml_data = strdup(data))) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Couldn't create XML data!\n");
+		switch_goto_status(SWITCH_STATUS_FALSE, done);
+	}
+
+	/* 解析字符串中的xml结构 */
+	if (!(xctl = switch_xml_parse_str_dynamic(xml_data, SWITCH_TRUE))) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "XML ERROR!\n");
+		switch_goto_status(SWITCH_STATUS_FALSE, done);
+	}
+
+	/* 解析xml的根元素control */
+	if (!xctl->name || strcasecmp(xctl->name, "control")) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "XML format error: Couldn't find root tag <Control>!");
+		switch_goto_status(SWITCH_STATUS_FALSE, done);
+	}
+
+	/* 根据xml类型分发到指定的函数解析，目前只有会议控制 */
+	if ((xtype = switch_xml_child_ignorcase(xctl, "conference")) ||
+		(xtype = switch_xml_child_ignorcase(xctl, "conferenceID"))) {
+		/* 会议控制 */
+		status = conference_control(message, xctl);
+	} else {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "XML format error: Couldn't find correct type!");
+		switch_goto_status(SWITCH_STATUS_FALSE, done);
+	}
+
+  done:
+	switch_xml_free(xctl);
+	switch_safe_free(xml_data);
+	return status;
+}
+
+/* Macro expands to: switch_status_t mod_smsctl_load(switch_loadable_module_interface_t **module_interface, switch_memory_pool_t *pool) */
+SWITCH_MODULE_LOAD_FUNCTION(mod_smsctl_load) /* change@suy:2021-1-3 */
 {
 	switch_chat_interface_t *chat_interface;
 	switch_chat_application_interface_t *chat_app_interface;
@@ -632,6 +1042,10 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_sms_load)
 	SWITCH_ADD_CHAT_APP(chat_app_interface, "send", "send the message as-is", "send the message as-is", send_function, "", SCAF_NONE);
 	SWITCH_ADD_CHAT_APP(chat_app_interface, "fire", "fire the message", "fire the message", fire_function, "", SCAF_NONE);
 	SWITCH_ADD_CHAT_APP(chat_app_interface, "system", "execute a system command", "execute a sytem command", system_function, "", SCAF_NONE);
+	/* change@suy:2021-1-11 将cmdctl函数添加到chat_app中 */
+	SWITCH_ADD_CHAT_APP(chat_app_interface, "cmdctl", "execute cttdcds commands", "execute cttdcds commands", cmdctl_function, "", SCAF_NONE);
+	/* change@suy:2021-1-11 将xmlctl函数添加到chat_app中 */
+	SWITCH_ADD_CHAT_APP(chat_app_interface, "xmlctl", "execute xml commands", "execute xml commands", xmlctl_function, "", SCAF_NONE);
 
 	/* indicate that the module should continue to be loaded */
 	return SWITCH_STATUS_SUCCESS;
@@ -639,8 +1053,8 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_sms_load)
 
 /*
   Called when the system shuts down
-  Macro expands to: switch_status_t mod_sms_shutdown() */
-SWITCH_MODULE_SHUTDOWN_FUNCTION(mod_sms_shutdown)
+  Macro expands to: switch_status_t mod_smsctl_shutdown() */
+SWITCH_MODULE_SHUTDOWN_FUNCTION(mod_smsctl_shutdown) /* change@suy:2021-1-3 */
 {
 	switch_event_unbind_callback(event_handler);
 

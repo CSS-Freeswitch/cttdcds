@@ -124,7 +124,48 @@ api_command_t conference_api_sub_commands[] = {
 	{"vid-fgimg", (void_fn_t) & conference_api_sub_canvas_fgimg, CONF_API_SUB_ARGS_SPLIT, "vid-fgimg", "<file> | clear [<canvas-id>]"},
 	{"vid-bgimg", (void_fn_t) & conference_api_sub_canvas_bgimg, CONF_API_SUB_ARGS_SPLIT, "vid-bgimg", "<file> | clear [<canvas-id>]"},
 	{"vid-bandwidth", (void_fn_t) & conference_api_sub_vid_bandwidth, CONF_API_SUB_ARGS_SPLIT, "vid-bandwidth", "<BW>"},
-	{"vid-personal", (void_fn_t) & conference_api_sub_vid_personal, CONF_API_SUB_ARGS_SPLIT, "vid-personal", "[on|off]"}
+	{"vid-personal", (void_fn_t) & conference_api_sub_vid_personal, CONF_API_SUB_ARGS_SPLIT, "vid-personal", "[on|off]"},
+
+	// add@suy:2021-1-6 下面的所有api都可以使用号码控制会议的成员
+	{"num-energy", (void_fn_t) & conference_api_sub_energy, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-energy", "<member_num|all|last|non_moderator> [<newval>]"},
+	{"num-auto-energy", (void_fn_t) & conference_api_sub_auto_energy, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-auto-energy", "<member_num|all|last|non_moderator> [<newval>]"},
+	{"num-max-energy", (void_fn_t) & conference_api_sub_max_energy, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-max-energy", "<member_num|all|last|non_moderator> [<newval>]"},
+	{"num-agc", (void_fn_t) & conference_api_sub_agc, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-agc", "<member_num|all|last|non_moderator> [<newval>]"},
+	{"num-canvas", (void_fn_t) & conference_api_sub_canvas, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-canvas", "<member_num|all|last|non_moderator> [<newval>]"},
+	{"num-watching-canvas", (void_fn_t) & conference_api_sub_watching_canvas, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-watching-canvas", "<member_num|all|last|non_moderator> [<newval>]"},
+	{"num-layer", (void_fn_t) & conference_api_sub_layer, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-layer", "<member_num|all|last|non_moderator> [<newval>]"},
+	{"num-volume_in", (void_fn_t) & conference_api_sub_volume_in, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-volume_in", "<member_num|all|last|non_moderator> [<newval>]"},
+	{"num-volume_out", (void_fn_t) & conference_api_sub_volume_out, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-volume_out", "<member_num|all|last|non_moderator> [<newval>]"},
+	{"num-position", (void_fn_t) & conference_api_sub_position, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-position", "<member_num> <x>:<y>:<z>"},
+	{"num-dtmf", (void_fn_t) & conference_api_sub_dtmf, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-dtmf", "<[member_num|all|last|non_moderator]> <digits>"},
+	{"num-kick", (void_fn_t) & conference_api_sub_kick, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-kick", "<[member_num|all|last|non_moderator]> [<optional sound file>]"},
+	{"num-flip", (void_fn_t) & conference_api_sub_vid_flip, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-flip", "<[member_num|all|last|non_moderator]>"},
+	{"num-border", (void_fn_t) & conference_api_sub_vid_border, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-border", "<[member_num|all|last|non_moderator]>"},
+	{"num-hup", (void_fn_t) & conference_api_sub_hup, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-hup", "<[member_num|all|last|non_moderator]>"},
+	{"num-hold", (void_fn_t) & conference_api_sub_hold, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-hold", "<[member_num|all]|last|non_moderator> [file]"},
+	{"num-unhold", (void_fn_t) & conference_api_sub_unhold, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-unhold", "<[member_num|all]|last|non_moderator>"},
+	{"num-mute", (void_fn_t) & conference_api_sub_mute, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-mute", "<[member_num|all]|last|non_moderator> [<quiet>]"},
+	{"num-tmute", (void_fn_t) & conference_api_sub_tmute, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-tmute", "<[member_num|all]|last|non_moderator> [<quiet>]"},
+	{"num-unmute", (void_fn_t) & conference_api_sub_unmute, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-unmute", "<[member_num|all]|last|non_moderator> [<quiet>]"},
+	{"num-vmute", (void_fn_t) & conference_api_sub_vmute, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-vmute", "<[member_num|all]|last|non_moderator> [<quiet>]"},
+	{"num-tvmute", (void_fn_t) & conference_api_sub_tvmute, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-tvmute", "<[member_num|all]|last|non_moderator> [<quiet>]"},
+	{"num-vmute-snap", (void_fn_t) & conference_api_sub_conference_video_vmute_snap, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-vmute-snap", "<[member_num|all]|last|non_moderator>"},
+	{"num-unvmute", (void_fn_t) & conference_api_sub_unvmute, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-unvmute", "<[member_num|all]|last|non_moderator> [<quiet>]"},
+	{"num-vblind", (void_fn_t) & conference_api_sub_vblind, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-vblind", "<[member_num|all]|last|non_moderator> [<quiet>]"},
+	{"num-tvblind", (void_fn_t) & conference_api_sub_tvblind, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-tvblind", "<[member_num|all]|last|non_moderator> [<quiet>]"},
+	{"num-unvblind", (void_fn_t) & conference_api_sub_unvblind, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-unvblind", "<[member_num|all]|last|non_moderator> [<quiet>]"},
+	{"num-deaf", (void_fn_t) & conference_api_sub_deaf, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-deaf", "<[member_num|all]|last|non_moderator>"},
+	{"num-undeaf", (void_fn_t) & conference_api_sub_undeaf, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-undeaf", "<[member_num|all]|last|non_moderator>"},
+	{"num-filter", (void_fn_t) & conference_api_sub_video_filter, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-filter", "<[member_num|all]|last|non_moderator> <string>"},
+	{"num-floor", (void_fn_t) & conference_api_sub_floor, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-floor", "<member_num|last>"},
+	{"num-vid-floor", (void_fn_t) & conference_api_sub_vid_floor, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-vid-floor", "<member_num|last> [force]"},
+	{"num-banner", (void_fn_t) & conference_api_sub_vid_banner, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-banner", "<member_num|last> <text>"},
+	{"num-mute-img", (void_fn_t) & conference_api_sub_vid_mute_img, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-mute-img", "<member_num|last> [<path>|clear]"},
+	{"num-logo-img", (void_fn_t) & conference_api_sub_vid_logo_img, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-logo-img", "<member_num|last> [<path>|clear]"},
+	{"num-codec-group", (void_fn_t) & conference_api_sub_vid_codec_group, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-codec-group", "<member_num|last> [<group>|clear]"},
+	{"num-role-id", (void_fn_t) & conference_api_sub_vid_role_id, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-role-id", "<member_num|last> <val>|clear"},
+	{"num-get-uuid", (void_fn_t) & conference_api_sub_get_uuid, CONF_API_SUB_MEMBER_NUMBER_TARGET, "num-get-uuid", "<member_num|last>"}
+	// add end
 };
 
 switch_status_t conference_api_sub_pause_play(conference_obj_t *conference, switch_stream_handle_t *stream, int argc, char **argv)
@@ -4252,6 +4293,64 @@ switch_status_t conference_api_dispatch(conference_obj_t *conference, switch_str
 					}
 				}
 				break;
+
+				/* add@suy:2021-1-6 分发通过号码控制会议成员的API */
+			case CONF_API_SUB_MEMBER_NUMBER_TARGET:
+				{
+					char *number = NULL;
+					uint8_t all = 0;
+					uint8_t last = 0;
+					uint8_t non_mod = 0;
+
+					if (argv[argn + 1]) {
+						all = strcasecmp(argv[argn + 1], "all") ? 0 : 1;
+						non_mod = strcasecmp(argv[argn + 1], "non_moderator") ? 0 : 1;
+						last = strcasecmp(argv[argn + 1], "last") ? 0 : 1;
+						if (!all && !non_mod && !last) {
+							number = argv[argn + 1];
+						}
+					}
+
+					if (all || non_mod) {
+						conference_member_itterator(conference, stream, non_mod, (conference_api_member_cmd_t) conference_api_sub_commands[i].pfnapicmd, argv[argn + 2]);
+					} else if (last) {
+						conference_member_t *member = NULL;
+						conference_member_t *last_member = NULL;
+
+						switch_mutex_lock(conference->member_mutex);
+
+						/* find last (oldest) member */
+						member = conference->members;
+						while (member != NULL) {
+							if (last_member == NULL || member->id > last_member->id) {
+								last_member = member;
+							}
+							member = member->next;
+						}
+
+						/* exec functio on last (oldest) member */
+						if (last_member != NULL && last_member->session && !conference_utils_member_test_flag(last_member, MFLAG_NOCHANNEL)) {
+							conference_api_member_cmd_t pfn = (conference_api_member_cmd_t) conference_api_sub_commands[i].pfnapicmd;
+							pfn(last_member, stream, argv[argn + 2]);
+						}
+
+						switch_mutex_unlock(conference->member_mutex);
+					} else if (number) {
+						conference_api_member_cmd_t pfn = (conference_api_member_cmd_t) conference_api_sub_commands[i].pfnapicmd;
+						conference_member_t *member = conference_member_get_by_number(conference, number);
+
+						if (member != NULL) {
+							pfn(member, stream, argv[argn + 2]);
+							switch_thread_rwlock_unlock(member->rwlock);
+						} else {
+							stream->write_function(stream, "-ERR Non-Existant ID %s\n", number);
+						}
+					} else {
+						stream->write_function(stream, "%s %s", conference_api_sub_commands[i].pcommand, conference_api_sub_commands[i].psyntax);
+					}
+				}
+				break;
+				/* add end */
 
 				/* commands that deals with all text after command */
 			case CONF_API_SUB_ARGS_AS_ONE:
